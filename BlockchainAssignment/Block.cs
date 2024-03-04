@@ -76,36 +76,39 @@ namespace BlockchainAssignment
 
         public string Mine(Action<string> callback)
         {
-            // Create a list to hold tasks
-            List<Task> tasks = new List<Task>();
-
-            // Create a Stopwatch instance to measure the mining time
             Stopwatch stopwatch = new Stopwatch();
-
-            // Start the stopwatch
             stopwatch.Start();
 
-            // Start multiple tasks, each attempting to find a valid hash
-            for (int i = 0; i < Environment.ProcessorCount; i++)
+            Parallel.For(0, Environment.ProcessorCount, (i, loopState) =>
             {
-                tasks.Add(Task.Run(() =>
+                while (true)
                 {
-                    int nonce = (i == 0) ? 0 : i * 1000; // Use standard Nonce for the first thread, and e-Nonce for subsequent threads
-                    string currentHash = MineWithNonce(nonce); // Mine with the current nonce
-                    callback(currentHash); // Callback with the result
-                }));
-            }
+                    lock (this)
+                    {
+                        nonce++;
+                        hash = CreateHash();
+                    }
+                    if (hash.StartsWith(new string('0', difficulty)))
+                    {
+                        callback(hash);
+                        loopState.Stop();
+                        break;
+                    }
+                    // Check elapsed time and adjust difficulty
+                    DateTime currentTime = DateTime.Now;
+                    TimeSpan elapsed = currentTime - timestamp;
+                    double actualBlockTime = elapsed.TotalSeconds;
 
-            // Wait for all tasks to complete
-            Task.WaitAll(tasks.ToArray());
-
-            // Stop the stopwatch
+                    // Adjust difficulty dynamically
+                    int newDifficulty = (int)Math.Max(1, difficulty * (TARGET_BLOCK_TIME / actualBlockTime));
+                    lock (this)
+                    {
+                        difficulty = newDifficulty;
+                    }
+                }
+            });
             stopwatch.Stop();
-
-            // Output the mining time
             Console.WriteLine("Mining time: " + stopwatch.ElapsedMilliseconds + " ms");
-
-            // Return a placeholder value (e.g., empty string) or relevant result depending on the use case
             return "";
         }
 
@@ -201,6 +204,10 @@ namespace BlockchainAssignment
         /* Concatenate all properties to output to the UI */
         public override string ToString()
         {
+            DateTime currentTime = DateTime.Now;
+            TimeSpan elapsed = currentTime - timestamp;
+            double blockTime = elapsed.TotalSeconds;
+
             return "[BLOCK START]"
                 + "\nIndex: " + index
                 + "\tTimestamp: " + timestamp
@@ -209,13 +216,17 @@ namespace BlockchainAssignment
                 + "\nDifficulty Level: " + difficulty
                 + "\nNonce: " + nonce
                 + "\nHash: " + hash
+                + "\nMined with " + Environment.ProcessorCount + " threads"
+                + "\nBlock Time: " + blockTime + " seconds"
                 + "\n-- Rewards --"
                 + "\nReward: " + reward
                 + "\nMiners Address: " + minerAddress
                 + "\n-- " + transactionList.Count + " Transactions --"
-                +"\nMerkle Root: " + merkleRoot
+                + "\nMerkle Root: " + merkleRoot
                 + "\n" + String.Join("\n", transactionList)
                 + "\n[BLOCK END]";
         }
+
+        private const double TARGET_BLOCK_TIME = 10.0;
     }
 }
