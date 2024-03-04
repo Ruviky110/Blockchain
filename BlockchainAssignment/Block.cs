@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
@@ -73,6 +74,70 @@ namespace BlockchainAssignment
             return hash;
         }
 
+        public string Mine(Action<string> callback)
+        {
+            // Create a list to hold tasks
+            List<Task> tasks = new List<Task>();
+
+            // Create a Stopwatch instance to measure the mining time
+            Stopwatch stopwatch = new Stopwatch();
+
+            // Start the stopwatch
+            stopwatch.Start();
+
+            // Start multiple tasks, each attempting to find a valid hash
+            for (int i = 0; i < Environment.ProcessorCount; i++)
+            {
+                tasks.Add(Task.Run(() =>
+                {
+                    int nonce = (i == 0) ? 0 : i * 1000; // Use standard Nonce for the first thread, and e-Nonce for subsequent threads
+                    string currentHash = MineWithNonce(nonce); // Mine with the current nonce
+                    callback(currentHash); // Callback with the result
+                }));
+            }
+
+            // Wait for all tasks to complete
+            Task.WaitAll(tasks.ToArray());
+
+            // Stop the stopwatch
+            stopwatch.Stop();
+
+            // Output the mining time
+            Console.WriteLine("Mining time: " + stopwatch.ElapsedMilliseconds + " ms");
+
+            // Return a placeholder value (e.g., empty string) or relevant result depending on the use case
+            return "";
+        }
+
+        // Mine with the given nonce
+        private string MineWithNonce(int nonce)
+        {
+            string re = new string('0', difficulty); // Difficulty requirement string
+            SHA256 hasher = SHA256Managed.Create();
+
+            while (true)
+            {
+                // Concatenate all relevant properties including the nonce
+                string input = timestamp.ToString() + index + prevHash + nonce + merkleRoot;
+
+                // Apply the hash function to the input string
+                byte[] hashByte = hasher.ComputeHash(Encoding.UTF8.GetBytes(input));
+
+                // Reformat to a string
+                string hash = "";
+                foreach (byte x in hashByte)
+                    hash += string.Format("{0:x2}", x);
+
+                // Check if the hash meets the difficulty requirement
+                if (hash.StartsWith(re))
+                {
+                    return hash; // Return the valid hash
+                }
+
+                nonce++; // Increment the nonce if the difficulty level is not satisfied
+            }
+        }
+
         // Create a Hash which satisfies the difficulty level required for PoW
         public String Mine()
         {
@@ -81,7 +146,7 @@ namespace BlockchainAssignment
 
             String re = new string('0', difficulty); // A string for analysing the PoW requirement
 
-            while(!hash.StartsWith(re)) // Check the resultant hash against the "re" string
+            while (!hash.StartsWith(re)) // Check the resultant hash against the "re" string
             {
                 nonce++; // Increment the nonce should the difficulty level not be satisfied
                 hash = CreateHash(); // Rehash with the new nonce as to generate a different hash
@@ -89,6 +154,8 @@ namespace BlockchainAssignment
 
             return hash; // Return the hash meeting the difficulty requirement
         }
+
+
 
         // Merkle Root Algorithm - Encodes transactions within a block into a single hash
         public static String MerkleRoot(List<Transaction> transactionList)
